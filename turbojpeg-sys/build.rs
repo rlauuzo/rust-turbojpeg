@@ -164,6 +164,12 @@ fn build_vendor(link_kind: LinkKind) -> Result<Library> {
         cmake.configure_arg("-DREQUIRE_SIMD=ON");
     }
 
+    let is_msvc = env("CARGO_CFG_TARGET_ENV").unwrap() == "msvc";
+    if is_msvc {
+        // libjpeg-turbo links the static C run-time by default, but Rust links the DLL one.
+        cmake.define("WITH_CRT_DLL", "ON");
+    }
+
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     if target_os == "android" {
         let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
@@ -181,8 +187,6 @@ fn build_vendor(link_kind: LinkKind) -> Result<Library> {
 
     let lib_path = dst_path.join("lib");
     let include_path = dst_path.join("include");
-
-    let is_msvc = env("CARGO_CFG_TARGET_ENV").unwrap() == "msvc";
 
     println!("cargo:rustc-link-search=native={}", lib_path.display());
     println!("cargo:rustc-link-lib={}=turbojpeg{}", match link_kind {
