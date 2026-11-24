@@ -31,7 +31,8 @@ pub const TJFLAG_ACCURATEDCT: u32 = 4096;
 pub const TJFLAG_STOPONWARNING: u32 = 8192;
 pub const TJFLAG_PROGRESSIVE: u32 = 16384;
 pub const TJFLAG_LIMITSCANS: u32 = 32768;
-pub type size_t = libc::c_ulong;
+// C size_t is usize wherever Rust runs; c_ulong is 32 bits on 64-bit Windows.
+pub type size_t = usize;
 pub type wchar_t = libc::c_int;
 #[repr(C)]
 #[repr(align(16))]
