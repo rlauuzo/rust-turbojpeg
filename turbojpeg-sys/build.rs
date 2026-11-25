@@ -168,10 +168,17 @@ fn build_vendor(link_kind: LinkKind) -> Result<Library> {
     if is_msvc {
         // libjpeg-turbo links the static C run-time by default, but Rust links the DLL one.
         cmake.define("WITH_CRT_DLL", "ON");
-        // clang-cl compiles libjpeg-turbo's Huffman decoding faster than MSVC: a 96 MP decode
-        // in strips took 120 ms instead of 163, with the same pixels.
-        if clang_cl_toolset() {
-            cmake.generator_toolset("ClangCL");
+        // On MSVC the cmake crate sets CMAKE_C_FLAGS_<CONFIG> to pass /MD, which replaces
+        // CMake's optimization flags: release builds compiled the C code with none, and a 96 MP
+        // decode in strips took 30% longer. These are CMake's own defaults; the run-time
+        // library follows WITH_CRT_DLL.
+        for (config, flags) in [
+            ("DEBUG", "/Zi /Ob0 /Od /RTC1"),
+            ("RELEASE", "/O2 /Ob2 /DNDEBUG"),
+            ("RELWITHDEBINFO", "/Zi /O2 /Ob1 /DNDEBUG"),
+            ("MINSIZEREL", "/O1 /Ob1 /DNDEBUG"),
+        ] {
+            cmake.define(format!("CMAKE_C_FLAGS_{config}"), flags);
         }
     }
 
@@ -303,28 +310,6 @@ fn generate_bindings(_: &Library) -> Result<()> {
 }
 
 
-
-/// Whether CMake builds with a Visual Studio generator whose installation has the ClangCL
-/// toolset: Visual Studio's Clang compiler and its MSBuild support, as vswhere reports them.
-#[cfg(feature = "cmake")]
-fn clang_cl_toolset() -> bool {
-    let generator = env("CMAKE_GENERATOR").unwrap_or_default();
-    if !generator.is_empty() && !generator.to_string_lossy().starts_with("Visual Studio") {
-        return false;
-    }
-    let Some(program_files) = env::var_os("ProgramFiles(x86)") else {
-        return false;
-    };
-    let vswhere = PathBuf::from(program_files).join(r"Microsoft Visual Studio\Installer\vswhere.exe");
-    let output = Command::new(vswhere)
-        .args(["-latest", "-products", "*", "-requires"])
-        .args(["Microsoft.VisualStudio.Component.VC.Llvm.Clang", "Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset"])
-        .args(["-property", "installationPath"])
-        .output();
-    let found = output.is_ok_and(|output| output.status.success() && !output.stdout.trim_ascii().is_empty());
-    println!("Visual Studio's ClangCL toolset {}", if found { "found" } else { "not found, building with MSVC" });
-    found
-}
 
 fn env(name: &str) -> Option<OsString> {
     // adapted from `openssl-sys` crate
